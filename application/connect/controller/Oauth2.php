@@ -20,17 +20,26 @@ class Oauth2 {
 		$storage = new \OAuth2\Storage\Pdo(config('database.oauth'));
 
 		// Pass a storage object or array of storage objects to the OAuth2 server class
-		$server = new \OAuth2\Server($storage);
+		$server = new \OAuth2\Server($storage, array(
+			'always_issue_new_refresh_token' => true,
+			'refresh_token_lifetime' => 2419200,
+		));
+		// create the grant type
+		$grantType = new \OAuth2\GrantType\RefreshToken($storage);
+
+		// add the grant type to your OAuth server
+		$server->addGrantType($grantType);
 
 		// Add the "Client Credentials" grant type (it is the simplest of the grant types)
 		$server->addGrantType(new \OAuth2\GrantType\ClientCredentials($storage));
 
 		// Add the "Authorization Code" grant type (this is where the oauth magic happens)
 		$server->addGrantType(new \OAuth2\GrantType\AuthorizationCode($storage));
+
 		return $server;
 	}
 	public function index() {
-		$url = 'http://oauth.4kb.cn/?a=b';
+		$url = 'http://oauth.4kb.cn/index/index/index';
 		$state = substr(md5('testclient' . 'authorize'), 0, 8);
 		$redirect_uri = 'http://' . $_SERVER['HTTP_HOST'] . '/connect/Oauth2/authorize' . '/?response_type=code&client_id=testclient&state=' . $state . '&redirect_uri=' . urlencode($url);
 		header('Location:' . $redirect_uri);
@@ -42,15 +51,6 @@ class Oauth2 {
 	 * @return   [type]                 [description]
 	 */
 	public function authorize() {
-		if (isset($_GET['response_type']) && $_GET['response_type'] != 'code') {
-			return json(['code' => 20001, 'msg' => '不支持的RESPONSE_TYPE类型']);
-		}
-		if (!isset($_GET['client_id'])) {
-			return json(['code' => 20002, 'msg' => 'client_id没有填写']);
-		}
-		if (!isset($_GET['redirect_uri'])) {
-			return json(['code' => 20003, 'msg' => 'redirect_uri错误']);
-		}
 		$request = \OAuth2\Request::createFromGlobals();
 		$response = new \OAuth2\Response();
 		$server = $this->oauth2;
@@ -58,7 +58,6 @@ class Oauth2 {
 		if (!$server->validateAuthorizeRequest($request, $response)) {
 			$response->send();
 			die();
-			// return json(['code' => $response->getResponseBody(), 'msg' => 'client_id不合法']);
 		}
 		$server->handleAuthorizeRequest($request, $response, true);
 		$response->send();
@@ -76,6 +75,36 @@ class Oauth2 {
 		}
 		if (!isset($_POST['code'])) {
 			return json(['code' => 20006, 'msg' => 'code不合法']);
+		}
+		$server->handleTokenRequest(\OAuth2\Request::createFromGlobals())->send();
+	}
+	/**
+	 * [resource 判断access_token合法]
+	 * @Author   kong|<iwhero@yeah.com>
+	 * @DateTime 2017-12-29
+	 * @return   [type]                 [description]
+	 */
+	public function resource() {
+		$server = $this->oauth2;
+		if (!$server->verifyResourceRequest(\OAuth2\Request::createFromGlobals())) {
+			$server->getResponse()->send();
+			die();
+		}
+		return json(['success' => true, 'message' => '合法的']);
+	}
+	/**
+	 * [token 刷新access_token]
+	 * @Author   kong|<iwhero@yeah.com>
+	 * @DateTime 2017-12-28
+	 * @return   [type]                 [description]
+	 */
+	public function refresh() {
+		$server = $this->oauth2;
+		if (!isset($_POST['grant_type'])) {
+			return json(['code' => 20007, 'msg' => 'grant_type没有填写']);
+		}
+		if (!isset($_POST['refresh_token'])) {
+			return json(['code' => 20006, 'msg' => 'refresh_token不合法']);
 		}
 		$server->handleTokenRequest(\OAuth2\Request::createFromGlobals())->send();
 	}

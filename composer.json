@@ -19,8 +19,7 @@
         "php": ">=5.4.0",
         "topthink/framework": "~5.0.0",
         "bshaffer/oauth2-server-php": "^1.10",
-        "rmccue/requests": "^1.7",
-        "php-curl-class/php-curl-class": "^8.0"
+        "guzzlehttp/guzzle": "^6.3"
     },
     "autoload": {
         "psr-4": {

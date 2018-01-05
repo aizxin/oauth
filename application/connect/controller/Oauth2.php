@@ -1,60 +1,13 @@
 <?php
 namespace app\connect\controller;
+use app\connect\oauth\Oauth;
 
 class Oauth2 {
 
 	protected $oauth2;
 
 	public function __construct() {
-		$this->oauth2 = $this->oauth_server();
-	}
-	/**
-	 * [oauth_server oauth服务初始化]
-	 * @Author   kong|<iwhero@yeah.com>
-	 * @DateTime 2017-12-28
-	 * @return   [type]                 [description]
-	 */
-	protected function oauth_server($users = array()) {
-		\OAuth2\Autoloader::register();
-		// $dsn is the Data Source Name for your database, for exmaple "mysql:dbname=my_oauth2_db;host=localhost"
-		$storage = new \OAuth2\Storage\Pdo(config('database.oauth'));
-		// ===== token刷新 ======
-		// Pass a storage object or array of storage objects to the OAuth2 server class
-		$server = new \OAuth2\Server($storage, array(
-			'always_issue_new_refresh_token' => true,
-			'refresh_token_lifetime' => 2419200,
-		));
-		// create the grant type
-		$grantType = new \OAuth2\GrantType\RefreshToken($storage);
-		// add the grant type to your OAuth server
-		$server->addGrantType($grantType);
-		// ========token刷新end==========
-		if (count($users) > 0) {
-			# code...
-			// ========密码登录==========
-			// create some users in memory
-			// $users = array('bshaffer' => array('password' => 'brent123', 'first_name' => 'Brent', 'last_name' => 'Shaffer'));
-
-			// create a storage object
-			$usersInfo = new \OAuth2\Storage\Memory(array('user_credentials' => $users));
-			// create the grant type
-			$grantTypeUser = new \OAuth2\GrantType\UserCredentials($usersInfo);
-			// 存入mysql数据库
-			// $storage->setUser($users['bshaffer']['username'], $users['bshaffer']['password']);
-			// $grantTypeUser = new \OAuth2\GrantType\UserCredentials($storage);
-
-			// add the grant type to your OAuth server
-			$server->addGrantType($grantTypeUser);
-			// ========密码登录end==========
-		}
-
-		// Add the "Client Credentials" grant type (it is the simplest of the grant types)
-		$server->addGrantType(new \OAuth2\GrantType\ClientCredentials($storage));
-
-		// Add the "Authorization Code" grant type (this is where the oauth magic happens)
-		$server->addGrantType(new \OAuth2\GrantType\AuthorizationCode($storage));
-
-		return $server;
+		$this->oauth2 = oauth_server();
 	}
 	public function index() {
 		$url = 'http://oauth.4kb.cn/index/index/index';
@@ -87,14 +40,13 @@ class Oauth2 {
 	 * @return   [type]                 [description]
 	 */
 	public function token() {
-		$server = $this->oauth2;
 		if (!isset($_POST['grant_type'])) {
-			return json(['code' => 20005, 'msg' => 'grant_type没有填写']);
+			return json(['code' => false, 'msg' => 'grant_type没有填写']);
 		}
 		if (!isset($_POST['code'])) {
-			return json(['code' => 20006, 'msg' => 'code不合法']);
+			return json(['code' => false, 'msg' => 'code不合法']);
 		}
-		$server->handleTokenRequest(\OAuth2\Request::createFromGlobals())->send();
+		$this->oauth2->handleTokenRequest(\OAuth2\Request::createFromGlobals())->send();
 	}
 	/**
 	 * [resource 判断access_token合法]
@@ -117,14 +69,20 @@ class Oauth2 {
 	 * @return   [type]                 [description]
 	 */
 	public function refresh() {
-		$server = $this->oauth2;
+		$this->oauth2 = oauth_server([]);
 		if (!isset($_POST['grant_type'])) {
-			return json(['code' => 20007, 'msg' => 'grant_type没有填写']);
+			return json(['code' => false, 'msg' => 'grant_type没有填写']);
 		}
 		if (!isset($_POST['refresh_token'])) {
-			return json(['code' => 20006, 'msg' => 'refresh_token不合法']);
+			return json(['code' => false, 'msg' => 'refresh_token不合法']);
 		}
-		$server->handleTokenRequest(\OAuth2\Request::createFromGlobals())->send();
+		$body = $this->oauth2->handleTokenRequest($request)->getResponseBody();
+		$dataData = json_decode($body, true);
+		if (isset($dataData['access_token'])) {
+			!$new_refresh and $dataData['refresh_token'] = $data['refresh_token'];
+			return ['code' => true, 'message' => '刷新成功', 'data' => $dataData];
+		}
+		return ['code' => false, 'message' => '刷新失败', 'data' => $dataData];
 	}
 	/**
 	 * [user 用密码登录]
@@ -134,8 +92,54 @@ class Oauth2 {
 	 */
 	public function user() {
 		$users[$_POST['username']] = array('username' => $_POST['username'], 'password' => $_POST['password']);
-		$this->oauth2 = $this->oauth_server($users);
-		$server = $this->oauth2;
-		$server->handleTokenRequest(\OAuth2\Request::createFromGlobals())->send();
+		$this->oauth2 = oauth_server($users);
+		$this->oauth2->handleTokenRequest(\OAuth2\Request::createFromGlobals())->send();
+	}
+	/**
+	 * [testUser description]
+	 * @Author   kong|<iwhero@yeah.com>
+	 * @DateTime 2018-01-04
+	 * @return   [type]                 [description]
+	 */
+	public function testUser() {
+		$data = array(
+			'grant_type' => 'password', // valid grant type
+			'client_id' => 'testclient', // valid client id
+			'client_secret' => 'testpass', // valid client secret
+			'username' => '1', // valid user_id
+			'password' => 'brent123', // valid 任意密码
+		);
+		$oauth = Oauth::getInit();
+		var_dump($oauth->userOauthPassword($data));
+	}
+	/**
+	 * [testResource description]
+	 * @Author   kong|<iwhero@yeah.com>
+	 * @DateTime 2018-01-04
+	 * @return   [type]                 [description]
+	 */
+	public function testResource() {
+		$data = array(
+			'access_token' => 'a1970ada829a648e390e0aec1bf64c546e035441', // valid access_token
+			'user_id' => 1,
+		);
+		$oauth = Oauth::getInit();
+		var_dump($oauth->oauthResource($data));
+	}
+	/**
+	 * [testRefresh description]
+	 * @Author   kong|<iwhero@yeah.com>
+	 * @DateTime 2018-01-04
+	 * @return   [type]                 [description]
+	 */
+	public function testRefresh() {
+		$data = array(
+			'grant_type' => 'refresh_token', // valid grant type
+			'client_id' => 'testclient', // valid client id
+			'client_secret' => 'testpass', // valid client secret
+			'refresh_token' => '38e0ef880235654b87588cb03c19c49f435bb460', // valid refresh_token
+		);
+		$oauth = Oauth::getInit();
+		var_dump($oauth->oauthRefresh($data, true));
 	}
 }
